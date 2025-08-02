@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <title>Klaro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,6 +40,11 @@
             100% { opacity: 0; transform: translateY(20px); }
         }
         .animate-toast { animation: fadeinout 4s forwards; }
+        
+        /* Style pour l'éditeur de texte riche */
+        [contenteditable]:focus {
+            outline: none;
+        }
 
     </style>
 </head>
@@ -54,9 +58,12 @@
             <div class="container mx-auto px-4 py-3 flex justify-between items-center">
                 <h1 class="text-2xl md:text-3xl font-extrabold">Klaro</h1>
                 <div class="flex items-center gap-3">
-                    <span id="userIdDisplay" class="text-sm text-gray-300 hidden md:block">Non connecté</span>
+                    <div class="text-right hidden md:block">
+                        <span id="userEmailDisplay" class="text-sm text-gray-300 block">Non connecté</span>
+                        <span id="userNicknameDisplay" class="text-xs text-gray-500 font-bold"></span>
+                    </div>
                     <button id="authBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Connexion</button>
-                    <button id="preferencesBtn" class="hidden p-2 rounded-full hover:bg-white/20 transition-colors">
+                    <button id="preferencesBtn" class="hidden p-2 rounded-full hover:bg-white/20 transition-colors" title="Préférences">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
                     <button id="signOutBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors hidden">Déconnexion</button>
@@ -108,7 +115,10 @@
             <div class="flex-grow flex flex-col">
                 <h3 class="card-title text-xl font-bold text-gray-800 dark:text-gray-100 mb-2 break-words pr-8"></h3>
                 <div class="card-summary text-gray-600 dark:text-gray-400 text-sm flex-grow"></div>
-                <div class="tags-display mt-auto pt-3 text-sm flex flex-wrap gap-2"></div>
+                <div class="card-footer mt-auto pt-3 text-sm flex justify-between items-center">
+                    <div class="tags-display flex flex-wrap gap-2"></div>
+                    <span class="owner-display text-xs text-gray-500 dark:text-gray-400 font-medium"></span>
+                </div>
             </div>
         </div>
     </template>
@@ -117,7 +127,7 @@
     // Importe les modules Firebase nécessaires.
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInAnonymously, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch, where, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     // --- CONFIGURATION & CONSTANTES ---
     const firebaseConfig = {
@@ -135,27 +145,39 @@
         OBJECTIFS: 'objectifs',
         ACTIONS: 'actions',
         NOTES_REUNION: 'notesReunion',
-        SHARED_ENTRIES: 'shared_entries',
         TODO: 'todo_perso',
         VOYAGES: 'voyages',
         NOTES_PERSO: 'notes_perso',
         COURSES: 'courses',
-        USER_PREFERENCES: 'user_preferences'
+        USER_PREFERENCES: 'user_preferences',
+        COLLABORATIVE_DOCS: 'collaborative_docs',
+        NICKNAMES: 'nicknames'
     };
+
+    const SHAREABLE_TYPES = [
+        COLLECTIONS.NOTES_PERSO,
+        COLLECTIONS.COURSES,
+        COLLECTIONS.OBJECTIFS,
+        COLLECTIONS.NOTES_REUNION,
+        COLLECTIONS.VOYAGES,
+        COLLECTIONS.ACTIONS,
+        COLLECTIONS.TODO
+    ];
 
     const NAV_CONFIG = {
         pro: [
-            { id: 'objectifs', title: 'Objectifs', icon: '🎯', type: COLLECTIONS.OBJECTIFS, description: 'Suivez vos objectifs principaux et leur progression.' },
-            { id: 'actions', title: 'TO DO', icon: '📝', type: COLLECTIONS.ACTIONS, description: 'Gérez vos tâches et actions à réaliser.' },
-            { id: 'actionsTerminees', title: 'Terminées', icon: '✅', type: COLLECTIONS.ACTIONS, description: 'Consultez les actions que vous avez achevées.' },
-            { id: 'notesReunion', title: 'Notes', icon: '📋', type: COLLECTIONS.NOTES_REUNION, description: 'Archivez et retrouvez toutes vos notes.' },
-            { id: 'sharedItems', title: 'Partagés', icon: '🌐', type: COLLECTIONS.SHARED_ENTRIES, description: 'Ces éléments ont été partagés publiquement. Ils sont en lecture seule.' }
+            { id: 'objectifs', title: 'Objectifs', icon: '🎯', type: COLLECTIONS.OBJECTIFS, description: 'Suivez vos objectifs principaux.' },
+            { id: 'actions', title: 'TO DO', icon: '📝', type: COLLECTIONS.ACTIONS, description: 'Gérez vos tâches professionnelles.' },
+            { id: 'actionsTerminees', title: 'Terminées', icon: '✅', type: COLLECTIONS.ACTIONS, description: 'Consultez vos actions achevées.' },
+            { id: 'notesReunion', title: 'Notes', icon: '📋', type: COLLECTIONS.NOTES_REUNION, description: 'Archivez vos notes de réunion.' },
+            { id: 'sharedWithMePro', title: 'Partagés', icon: '🤝', type: COLLECTIONS.COLLABORATIVE_DOCS, description: 'Documents partagés avec vous.' }
         ],
         perso: [
             { id: 'todo_perso', title: 'TODO', icon: '📌', type: COLLECTIONS.TODO, description: 'Vos tâches personnelles.' },
             { id: 'voyages', title: 'Voyages', icon: '✈️', type: COLLECTIONS.VOYAGES, description: 'Planifiez vos prochaines escapades.' },
             { id: 'notes_perso', title: 'Notes', icon: '🗒️', type: COLLECTIONS.NOTES_PERSO, description: 'Vos pensées et mémos personnels.' },
-            { id: 'courses', title: 'Courses', icon: '🛒', type: COLLECTIONS.COURSES, description: 'N\'oubliez plus rien au supermarché.' }
+            { id: 'courses', title: 'Courses', icon: '🛒', type: COLLECTIONS.COURSES, description: 'N\'oubliez plus rien au supermarché.' },
+            { id: 'sharedWithMePerso', title: 'Partagés', icon: '🤝', type: COLLECTIONS.COLLABORATIVE_DOCS, description: 'Documents partagés avec vous.' }
         ]
     };
 
@@ -174,11 +196,12 @@
 
     // --- VARIABLES GLOBALES & SÉLECTEURS DOM ---
     let userId = null;
-    let userPreferences = { theme: 'light', startupMode: 'perso' };
+    let userPreferences = { theme: 'light', startupMode: 'perso', nickname: '' };
     let currentMode = userPreferences.startupMode;
     let currentPageId = NAV_CONFIG[currentMode][0].id;
     let unsubscribeListeners = [];
     let allDataCache = {};
+    let nicknameCache = {};
 
     const modalOverlay = document.getElementById('modal-overlay');
     const modalContainer = document.getElementById('modal-container');
@@ -228,14 +251,9 @@
         });
     }
 
-    function autoResizeTextarea(textarea) {
-        textarea.style.height = 'auto';
-        textarea.style.height = (textarea.scrollHeight) + 'px';
-    }
-
     const getTimeStamp = () => new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
 
-    // --- GESTION DES PRÉFÉRENCES ---
+    // --- GESTION DES PRÉFÉRENCES & PSEUDOS ---
     function applyTheme(theme) {
         if (theme === 'dark') {
             document.documentElement.classList.add('dark');
@@ -256,7 +274,7 @@
     }
 
     async function loadUserPreferences() {
-        if (!userId) return userPreferences; // Retourne les préférences par défaut
+        if (!userId) return userPreferences;
         const prefRef = doc(db, `artifacts/${appId}/users/${userId}/${COLLECTIONS.USER_PREFERENCES}`, 'settings');
         try {
             const docSnap = await getDoc(prefRef);
@@ -269,6 +287,19 @@
             return userPreferences;
         }
     }
+    
+    async function getNicknameByUserId(uid) {
+        if (nicknameCache[uid]) return nicknameCache[uid];
+        const prefRef = doc(db, `artifacts/${appId}/users/${uid}/${COLLECTIONS.USER_PREFERENCES}`, 'settings');
+        try {
+            const docSnap = await getDoc(prefRef);
+            if (docSnap.exists() && docSnap.data().nickname) {
+                nicknameCache[uid] = docSnap.data().nickname;
+                return docSnap.data().nickname;
+            }
+        } catch(e) { /* ignore */ }
+        return uid.substring(0,8); // fallback
+    }
 
     function showPreferencesModal() {
         const content = `
@@ -277,6 +308,13 @@
                 <button class="modal-close-btn text-3xl font-bold text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             <div class="p-6 space-y-6">
+                <div>
+                    <label class="block text-lg font-medium mb-2">Votre Pseudonyme</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="nickname-input" value="${userPreferences.nickname || ''}" placeholder="Choisissez un pseudo" class="flex-grow p-2 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                        <button id="save-nickname-btn" class="bg-blue-600 text-white px-4 rounded-lg">Sauvegarder</button>
+                    </div>
+                </div>
                 <div>
                     <label class="block text-lg font-medium mb-2">Thème d'affichage</label>
                     <div class="flex gap-4">
@@ -303,6 +341,15 @@
                         </label>
                     </div>
                 </div>
+                <div>
+                    <label class="block text-lg font-medium mb-2">Votre ID Utilisateur (pour le partage)</label>
+                    <div class="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm font-mono text-gray-600 dark:text-gray-400 truncate">${userId}</span>
+                        <button id="copy-pref-id-btn" class="p-1 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200" title="Copier l'ID">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                    </div>
+                </div>
             </div>
         `;
         showModal(content, 'max-w-md');
@@ -319,19 +366,63 @@
                 saveUserPreferences({ startupMode: e.target.value });
             });
         });
+        document.getElementById('copy-pref-id-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(userId);
+            showToast("ID Utilisateur copié !");
+        });
+        document.getElementById('save-nickname-btn').addEventListener('click', handleSaveNickname);
+    }
+
+    async function handleSaveNickname() {
+        const newNickname = document.getElementById('nickname-input').value.trim().toLowerCase();
+        if (!newNickname || newNickname === userPreferences.nickname) return;
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const newNicknameRef = doc(db, `artifacts/${appId}/${COLLECTIONS.NICKNAMES}`, newNickname);
+                const docSnap = await transaction.get(newNicknameRef);
+
+                if (docSnap.exists() && docSnap.data().userId !== userId) {
+                    throw new Error("Ce pseudonyme est déjà utilisé.");
+                }
+
+                if (userPreferences.nickname) {
+                    const oldNicknameRef = doc(db, `artifacts/${appId}/${COLLECTIONS.NICKNAMES}`, userPreferences.nickname);
+                    transaction.delete(oldNicknameRef);
+                }
+                
+                transaction.set(newNicknameRef, { userId: userId });
+                const prefRef = doc(db, `artifacts/${appId}/users/${userId}/${COLLECTIONS.USER_PREFERENCES}`, 'settings');
+                transaction.set(prefRef, { nickname: newNickname }, { merge: true });
+            });
+
+            userPreferences.nickname = newNickname;
+            document.getElementById('userNicknameDisplay').textContent = newNickname;
+            showToast("Pseudonyme mis à jour !", "success");
+        } catch (error) {
+            console.error("Erreur lors de la sauvegarde du pseudonyme:", error);
+            showToast(error.message || "Échec de la sauvegarde du pseudonyme.", "error");
+        }
     }
 
     // --- GESTION DE L'AUTHENTIFICATION ---
     onAuthStateChanged(auth, async (user) => {
+        const userNicknameEl = document.getElementById('userNicknameDisplay');
         if (user) {
             userId = user.uid;
             userPreferences = await loadUserPreferences();
             
             applyTheme(userPreferences.theme);
-            currentMode = userPreferences.startupMode;
-            currentPageId = NAV_CONFIG[currentMode][0].id;
+            
+            if (userPreferences.startupMode && NAV_CONFIG[userPreferences.startupMode]) {
+                currentMode = userPreferences.startupMode;
+            } else {
+                currentMode = 'perso';
+            }
 
-            document.getElementById('userIdDisplay').textContent = user.isAnonymous ? 'Mode Invité' : (user.email || 'Connecté');
+            document.getElementById('userEmailDisplay').textContent = user.isAnonymous ? 'Mode Invité' : (user.email || 'Connecté');
+            userNicknameEl.textContent = userPreferences.nickname || 'Pas de pseudo';
+            
             document.getElementById('authBtn').classList.add('hidden');
             document.getElementById('preferencesBtn').classList.remove('hidden');
             document.getElementById('signOutBtn').classList.remove('hidden');
@@ -343,8 +434,9 @@
             setMode(currentMode);
         } else {
             userId = null;
-            applyTheme('light'); // Revenir au thème clair par défaut
-            document.getElementById('userIdDisplay').textContent = 'Non connecté';
+            applyTheme('light');
+            document.getElementById('userEmailDisplay').textContent = 'Non connecté';
+            userNicknameEl.textContent = '';
             document.getElementById('authBtn').classList.remove('hidden');
             document.getElementById('preferencesBtn').classList.add('hidden');
             document.getElementById('signOutBtn').classList.add('hidden');
@@ -416,26 +508,25 @@
         if (!userId) return;
         detachRealtimeListeners();
 
-        const allCollections = [...new Set(Object.values(NAV_CONFIG).flat().map(c => c.type))];
-
-        allCollections.forEach(collectionName => {
-            const isPublic = collectionName === COLLECTIONS.SHARED_ENTRIES;
-            const path = isPublic 
-                ? `artifacts/${appId}/public/data/${collectionName}`
-                : `artifacts/${appId}/users/${userId}/${collectionName}`;
-            
+        const privateCollections = Object.values(NAV_CONFIG).flat().map(c => c.type).filter(t => t !== COLLECTIONS.COLLABORATIVE_DOCS);
+        
+        [...new Set(privateCollections)].forEach(collectionName => {
+            const path = `artifacts/${appId}/users/${userId}/${collectionName}`;
             const q = query(collection(db, path));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 allDataCache[collectionName] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                const currentPageConfig = NAV_CONFIG[currentMode].find(p => p.id === currentPageId);
-                if (currentPageConfig && currentPageConfig.type === collectionName) {
-                    renderCurrentPageContent();
-                }
-            }, (error) => {
-                console.error(`Erreur d'écoute sur ${collectionName}:`, error);
-            });
+                renderCurrentPageContent();
+            }, (error) => console.error(`Erreur d'écoute sur ${collectionName}:`, error));
             unsubscribeListeners.push(unsubscribe);
         });
+
+        const collabPath = `artifacts/${appId}/${COLLECTIONS.COLLABORATIVE_DOCS}`;
+        const qCollab = query(collection(db, collabPath), where('members', 'array-contains', userId));
+        const unsubscribeCollab = onSnapshot(qCollab, (snapshot) => {
+            allDataCache[COLLECTIONS.COLLABORATIVE_DOCS] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isShared: true }));
+            renderCurrentPageContent();
+        }, (error) => console.error(`Erreur d'écoute sur ${COLLECTIONS.COLLABORATIVE_DOCS}:`, error));
+        unsubscribeListeners.push(unsubscribeCollab);
     }
 
     // --- LOGIQUE DE RENDU ET D'INTERFACE ---
@@ -476,10 +567,9 @@
         const pageFragment = document.getElementById('page-template').content.cloneNode(true);
         pageFragment.querySelector('.page-title').textContent = config.title;
         pageFragment.querySelector('.page-description').textContent = config.description;
-        pageFragment.querySelector('.searchBar').dataset.page = id;
-
+        
         const addButton = pageFragment.querySelector('.add-new-item-btn');
-        if (id === 'actionsTerminees' || id === 'sharedItems') {
+        if (config.type === COLLECTIONS.COLLABORATIVE_DOCS || config.id === 'actionsTerminees') {
             addButton.remove();
         } else {
             addButton.onclick = () => showItemModal(null, config.type);
@@ -491,7 +581,7 @@
         renderCurrentPageContent();
     }
 
-    function renderCurrentPageContent() {
+    async function renderCurrentPageContent() {
         const container = pageContent.querySelector('.grid-container');
         if (!container) return;
 
@@ -517,38 +607,37 @@
             return;
         }
 
-        data.forEach(entry => {
-            const cardEl = createCardElement(entry, config);
+        for (const entry of data) {
+            const cardEl = await createCardElement(entry, config);
             container.appendChild(cardEl);
-        });
+        }
     }
 
-    function createCardElement(entry, pageConfig) {
+    async function createCardElement(entry, pageConfig) {
         const cardTemplate = document.getElementById('card-template').content.cloneNode(true);
         const card = cardTemplate.firstElementChild;
-        const isReadOnly = pageConfig.id === 'sharedItems';
-        const originalType = isReadOnly ? entry.originalCollection : pageConfig.type;
         
         card.dataset.id = entry.id;
-        card.dataset.type = originalType;
-        card.onclick = () => showItemModal(entry, originalType);
+        card.dataset.type = entry.isShared ? COLLECTIONS.COLLABORATIVE_DOCS : pageConfig.type;
+        card.dataset.originalType = entry.originalType || pageConfig.type;
+
+        card.onclick = () => showItemModal(entry, card.dataset.type);
 
         card.querySelector('.card-title').textContent = entry.titre || 'Sans titre';
-        card.querySelector('.card-icon').textContent = NAV_CONFIG[currentMode].find(p => p.id === pageConfig.id)?.icon || '❓';
+        
+        const iconConfig = Object.values(NAV_CONFIG).flat().find(c => c.type === card.dataset.originalType);
+        card.querySelector('.card-icon').textContent = iconConfig?.icon || '❓';
         
         const summaryEl = card.querySelector('.card-summary');
-        if (originalType === COLLECTIONS.OBJECTIFS) {
-            const pct = entry.pourcentage || 0;
-            const progressClass = pct < 25 ? 'bg-red-500' : (pct < 75 ? 'bg-yellow-500' : 'bg-green-500');
-            summaryEl.innerHTML = `<div class="bg-gray-200 dark:bg-gray-700 rounded-full h-5 my-2 shadow-inner"><div class="h-full text-center text-white font-bold text-xs leading-5 transition-all duration-500 ${progressClass}" style="width: ${pct}%">${pct}%</div></div>`;
-        } else if (originalType === COLLECTIONS.ACTIONS && entry.deadLine) {
-            summaryEl.innerHTML = `<span>Deadline: <strong class="${new Date() > new Date(entry.deadLine) && !entry.isCompleted ? 'text-red-500 font-semibold' : ''}">${new Date(entry.deadLine).toLocaleDateString('fr-FR')}</strong></span>`;
-        } else if (originalType === COLLECTIONS.COURSES) {
+        if (card.dataset.originalType === COLLECTIONS.COURSES) {
              const items = entry.items || [];
              const completedItems = items.filter(item => item.completed).length;
              summaryEl.textContent = `${completedItems} / ${items.length} articles cochés`;
         } else if (entry.contenu) {
-            summaryEl.textContent = `${entry.contenu.substring(0, 100)}...`;
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = entry.contenu;
+            const textContent = tempDiv.textContent || tempDiv.innerText || "";
+            summaryEl.textContent = `${textContent.substring(0, 100)}...`;
         }
 
         const tagsContainer = card.querySelector('.tags-display');
@@ -559,57 +648,77 @@
             tagsContainer.appendChild(tagEl);
         });
 
+        if (entry.isShared) {
+            const ownerNickname = await getNicknameByUserId(entry.ownerId);
+            card.querySelector('.owner-display').textContent = `Par ${ownerNickname}`;
+        }
+
         return card;
     }
 
     // --- LOGIQUE DE LA MODALE D'ÉDITION/CRÉATION ---
-    function showItemModal(entry, type) {
+    async function showItemModal(entry, type) {
         const isNew = !entry;
-        const isReadOnly = currentPageId === 'sharedItems';
         const data = isNew ? { titre: '', contenu: '', tags: [] } : entry;
+        const isShared = data.isShared;
+        const originalType = data.originalType || type;
 
         let formHtml = '';
         formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Titre</label><input type="text" data-field="titre" value="${data.titre}" placeholder="Titre de l'élément" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
         
-        if (type === COLLECTIONS.OBJECTIFS) {
-            formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Description</label><textarea data-field="description" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">${data.description || ''}</textarea></div>`;
-            formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Pourcentage: <span id="pct-label" class="font-bold">${data.pourcentage || 0}%</span></label><input type="range" data-field="pourcentage" min="0" max="100" value="${data.pourcentage || 0}" class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"></div>`;
-        } else if (type === COLLECTIONS.ACTIONS) {
-            formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Contenu / Description</label><textarea data-field="contenu" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">${data.contenu || ''}</textarea></div>`;
-            formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Deadline</label><input type="date" data-field="deadLine" value="${data.deadLine || ''}" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
-        } else if (type === COLLECTIONS.COURSES) {
+        if (originalType === COLLECTIONS.COURSES) {
             formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Articles</label><div id="course-items-list" class="mt-2 space-y-2"></div></div>`;
             formHtml += `<div class="flex gap-2"><input type="text" id="new-course-item-input" placeholder="Nouvel article" class="flex-grow p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"><button type="button" id="add-course-item-btn" class="bg-blue-500 text-white px-4 rounded-lg">Ajouter</button></div>`;
         } else { 
-             formHtml += `<div class="mb-4 flex-grow flex flex-col"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Contenu</label><textarea data-field="contenu" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 flex-grow">${data.contenu || ''}</textarea></div>`;
+            formHtml += `
+                <div class="mb-4 flex-grow flex flex-col">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Contenu</label>
+                    <div class="formatting-toolbar flex items-center gap-1 mb-2 p-1 bg-gray-100 dark:bg-gray-700 rounded-md">
+                        <button type="button" data-command="bold" class="font-bold w-8 h-8 rounded hover:bg-gray-200 dark:hover:bg-gray-600">G</button>
+                        <button type="button" data-command="underline" class="underline w-8 h-8 rounded hover:bg-gray-200 dark:hover:bg-gray-600">S</button>
+                        <button type="button" data-command="strikeThrough" class="line-through w-8 h-8 rounded hover:bg-gray-200 dark:hover:bg-gray-600">B</button>
+                    </div>
+                    <div data-field="contenu" contenteditable="true" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 flex-grow min-h-[150px]">${data.contenu || ''}</div>
+                </div>`;
         }
 
-        if (type !== COLLECTIONS.COURSES) {
+        if (originalType !== COLLECTIONS.COURSES) {
             formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags (séparés par des virgules)</label><input type="text" data-field="tags" value="${(data.tags || []).join(', ')}" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
         }
 
-        let historyHtml = '';
-        if (!isNew && data.historique) {
-            historyHtml = `<div class="historique text-xs text-gray-500 dark:text-gray-400 mt-6 bg-gray-100 dark:bg-gray-900/50 p-3 border dark:border-gray-700 rounded-md max-h-24 overflow-y-auto"><strong>Historique :</strong><ul class="list-none pl-0 mt-1">${data.historique.slice().reverse().map(line => `<li>• ${line}</li>`).join('')}</ul></div>`;
-        }
-
-        let actionsHtml = '<div class="modal-actions flex flex-wrap gap-3 justify-end">';
-        if (!isReadOnly) {
-            if (isNew) {
-                actionsHtml += `<button id="save-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">💾 Enregistrer</button>`;
-            } else {
-                 if ([COLLECTIONS.ACTIONS, COLLECTIONS.TODO].includes(type)) {
-                    if (data.isCompleted) {
-                        actionsHtml += `<button data-action="toggleComplete" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">↩️ Ré-ouvrir</button>`;
-                    } else {
-                        actionsHtml += `<button data-action="toggleComplete" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">✅ Terminer</button>`;
+        let shareHtml = '';
+        if (!isNew && SHAREABLE_TYPES.includes(originalType)) {
+            let recentCollaboratorsHtml = '';
+            if (allDataCache[COLLECTIONS.COLLABORATIVE_DOCS]) {
+                const recentIds = new Set(allDataCache[COLLECTIONS.COLLABORATIVE_DOCS].flatMap(doc => doc.members));
+                recentIds.delete(userId);
+                if (recentIds.size > 0) {
+                    recentCollaboratorsHtml += `<div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Récents :</div><div class="flex flex-wrap gap-2 mt-1">`;
+                    for (const uid of recentIds) {
+                        const nickname = await getNicknameByUserId(uid);
+                        recentCollaboratorsHtml += `<button data-nickname="${nickname}" class="recent-contact-btn bg-gray-200 dark:bg-gray-600 text-xs px-2 py-1 rounded-full">${nickname}</button>`;
                     }
+                    recentCollaboratorsHtml += `</div>`;
                 }
-                if (currentMode === 'pro') {
-                    actionsHtml += `<button data-action="share" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">🔗 Partager</button>`;
-                }
-                actionsHtml += `<button data-action="delete" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">🗑️ Supprimer</button>`;
             }
+
+            shareHtml = `<div class="mt-6 p-4 border dark:border-gray-700 rounded-lg">
+                <h4 class="font-bold mb-2">Partage</h4>
+                ${isShared ? `<p class="text-sm mb-2">Partagé avec : ${data.members.length} utilisateur(s)</p>` : ''}
+                <div class="flex gap-2">
+                    <input id="share-user-id" type="text" placeholder="Pseudo de l'utilisateur" class="flex-grow p-2 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                    <button id="share-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">🤝 Inviter</button>
+                </div>
+                ${isShared && data.ownerId === userId ? `<button id="unshare-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 w-full">Arrêter le partage</button>` : ''}
+                ${recentCollaboratorsHtml}
+            </div>`;
+        }
+        
+        let actionsHtml = '<div class="modal-actions flex flex-wrap gap-3 justify-end">';
+        if (isNew) {
+            actionsHtml += `<button id="save-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">💾 Enregistrer</button>`;
+        } else {
+            actionsHtml += `<button data-action="delete" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">🗑️ Supprimer</button>`;
         }
         actionsHtml += '</div>';
 
@@ -621,21 +730,17 @@
             </div>
             <div class="p-4 flex-grow overflow-y-auto flex flex-col" id="modal-form-content">
                 ${formHtml}
-                ${historyHtml}
+                ${shareHtml}
             </div>
             <div class="flex-shrink-0 p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                 ${actionsHtml}
             </div>
         `;
 
-        const maxWidth = [COLLECTIONS.NOTES_REUNION, COLLECTIONS.NOTES_PERSO, COLLECTIONS.VOYAGES].includes(type) ? 'max-w-4xl' : 'max-w-2xl';
-        showModal(finalContent, maxWidth);
+        showModal(finalContent, 'max-w-2xl');
         
-        if (type === COLLECTIONS.COURSES) {
-            renderCourseItems(data.items || [], isNew ? null : entry.id);
-        }
-        if (isReadOnly) {
-            modalContainer.querySelectorAll('input, textarea').forEach(el => el.disabled = true);
+        if (originalType === COLLECTIONS.COURSES) {
+            renderCourseItems(data.items || [], isNew ? null : entry.id, isShared);
         }
 
         attachModalListeners(entry, type);
@@ -643,53 +748,58 @@
 
     function attachModalListeners(entry, type) {
         const isNew = !entry;
-        
-        const rangeInput = modalContainer.querySelector('input[type="range"]');
-        if(rangeInput) {
-            rangeInput.addEventListener('input', (e) => {
-                document.getElementById('pct-label').textContent = `${e.target.value}%`;
-            });
-        }
+        const originalType = entry?.originalType || type;
 
         if (isNew) {
             document.getElementById('save-btn').onclick = () => saveEntry(null, type);
         } else {
             const deleteBtn = modalContainer.querySelector('[data-action="delete"]');
-            if(deleteBtn) deleteBtn.onclick = () => deleteEntry(type, entry.id);
+            if(deleteBtn) deleteBtn.onclick = () => deleteEntry(type, entry.id, entry.isShared);
             
-            const shareBtn = modalContainer.querySelector('[data-action="share"]');
-            if(shareBtn) shareBtn.onclick = () => shareEntry(type, entry.id);
+            const shareBtn = modalContainer.querySelector('#share-btn');
+            if(shareBtn) shareBtn.onclick = () => handleSharing(entry, type);
 
-            const toggleCompleteBtn = modalContainer.querySelector('[data-action="toggleComplete"]');
-            if(toggleCompleteBtn) toggleCompleteBtn.onclick = () => markAsCompleted(type, entry.id, !entry.isCompleted);
+            const unshareBtn = modalContainer.querySelector('#unshare-btn');
+            if(unshareBtn) unshareBtn.onclick = () => handleUnsharing(entry);
         }
 
-        if (type === COLLECTIONS.COURSES && entry) {
+        if (originalType === COLLECTIONS.COURSES && !isNew) {
             const addBtn = document.getElementById('add-course-item-btn');
             const addInput = document.getElementById('new-course-item-input');
-            addBtn.onclick = () => addOrUpdateCourseItem(entry.id);
-            addInput.onkeydown = (e) => { if(e.key === 'Enter') { e.preventDefault(); addOrUpdateCourseItem(entry.id); }};
+            addBtn.onclick = () => addOrUpdateCourseItem(entry.id, type);
+            addInput.onkeydown = (e) => { if(e.key === 'Enter') { e.preventDefault(); addOrUpdateCourseItem(entry.id, type); }};
         }
+
+        modalContainer.querySelectorAll('.formatting-toolbar button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const command = e.currentTarget.dataset.command;
+                document.execCommand(command, false, null);
+                modalContainer.querySelector('[contenteditable]').focus();
+            });
+        });
 
         modalContainer.querySelectorAll('[data-field]').forEach(input => {
-            if (input.tagName.toLowerCase() === 'textarea') {
-                input.style.overflowY = 'hidden';
-                autoResizeTextarea(input);
-                input.addEventListener('input', () => autoResizeTextarea(input));
-            }
-
-            if (!isNew) {
-                input.addEventListener('blur', (e) => {
-                    handleUpdate(type, entry.id, e.target.dataset.field, e.target.value);
-                });
+            if (input.isContentEditable) {
+                if (!isNew) {
+                    input.addEventListener('blur', (e) => {
+                        handleUpdate(type, entry.id, e.target.dataset.field, e.target.innerHTML);
+                    });
+                }
+            } else { // C'est un input ou textarea
+                 if (!isNew) {
+                    input.addEventListener('blur', (e) => {
+                        handleUpdate(type, entry.id, e.target.dataset.field, e.target.value);
+                    });
+                }
             }
         });
-        
-        if (!isNew && rangeInput) {
-            rangeInput.addEventListener('change', (e) => {
-                handleUpdate(type, entry.id, e.target.dataset.field, e.target.value);
+
+        modalContainer.querySelectorAll('.recent-contact-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                document.getElementById('share-user-id').value = e.currentTarget.dataset.nickname;
             });
-        }
+        });
     }
 
     // --- CRUD OPERATIONS ---
@@ -706,18 +816,13 @@
         let newEntryData = {};
         form.querySelectorAll('[data-field]').forEach(input => {
             const field = input.dataset.field;
-            let value = input.value;
+            let value = input.isContentEditable ? input.innerHTML : input.value;
             if (field === 'tags') value = value.split(',').map(t => t.trim()).filter(Boolean);
-            if (input.type === 'range') value = parseInt(value, 10);
             newEntryData[field] = value;
         });
 
         if (isNew) {
-            newEntryData.historique = [`Créé le ${getTimeStamp()}`];
-            newEntryData.createdAt = new Date().toISOString();
-            if (collectionName === COLLECTIONS.ACTIONS || collectionName === COLLECTIONS.TODO) {
-                newEntryData.isCompleted = false;
-            }
+            newEntryData.ownerId = userId;
             if (collectionName === COLLECTIONS.COURSES) {
                 newEntryData.items = []; 
             }
@@ -738,22 +843,13 @@
 
     async function handleUpdate(collectionName, id, field, value) {
         if (!userId) return;
-        const path = `artifacts/${appId}/users/${userId}/${collectionName}`;
+        const isShared = collectionName === COLLECTIONS.COLLABORATIVE_DOCS;
+        const path = isShared ? `artifacts/${appId}/${collectionName}` : `artifacts/${appId}/users/${userId}/${collectionName}`;
         const docRef = doc(db, path, id);
         try {
-            const docSnap = await getDoc(docRef);
-            if (!docSnap.exists()) return;
-
             let updateValue = value;
             if (field === 'tags') updateValue = value.split(',').map(t => t.trim()).filter(Boolean);
-            if (field === 'pourcentage') updateValue = parseInt(value, 10);
-
-            const newHistoryEntry = `Champ '${field}' mis à jour le ${getTimeStamp()}`;
-            const updates = {
-                [field]: updateValue,
-                historique: [...(docSnap.data().historique || []), newHistoryEntry]
-            };
-            await updateDoc(docRef, updates);
+            await updateDoc(docRef, { [field]: updateValue });
             showToast("Mise à jour enregistrée.", 'success');
         } catch (error) {
             console.error("Erreur de mise à jour:", error);
@@ -761,10 +857,10 @@
         }
     }
     
-    async function deleteEntry(collectionName, id) {
+    async function deleteEntry(collectionName, id, isShared) {
         const confirmed = await showConfirmationModal("Supprimer cet élément définitivement ?");
         if (confirmed) {
-            const path = `artifacts/${appId}/users/${userId}/${collectionName}`;
+            const path = isShared ? `artifacts/${appId}/${collectionName}` : `artifacts/${appId}/users/${userId}/${collectionName}`;
             try {
                 await deleteDoc(doc(db, path, id));
                 showToast("Élément supprimé.", 'success');
@@ -774,47 +870,83 @@
             }
         }
     }
+    
+    // --- LOGIQUE DE PARTAGE ---
+    async function handleSharing(entry, type) {
+        const targetNickname = document.getElementById('share-user-id').value.trim().toLowerCase();
+        if (!targetNickname) {
+            showToast("Veuillez entrer un pseudonyme.", "error");
+            return;
+        }
 
-    async function markAsCompleted(collectionName, id, isCompleted) {
-        const path = `artifacts/${appId}/users/${userId}/${collectionName}`;
-        const docRef = doc(db, path, id);
-        try {
-            const docSnap = await getDoc(docRef);
-            if (!docSnap.exists()) return;
-            const newHistoryEntry = `Marqué comme ${isCompleted ? 'terminé' : 'non terminé'} le ${getTimeStamp()}`;
-            await updateDoc(docRef, {
-                isCompleted,
-                historique: [...(docSnap.data().historique || []), newHistoryEntry]
-            });
-            showToast(`Action mise à jour.`, 'success');
+        const nicknameRef = doc(db, `artifacts/${appId}/${COLLECTIONS.NICKNAMES}`, targetNickname);
+        const nicknameSnap = await getDoc(nicknameRef);
+
+        if (!nicknameSnap.exists()) {
+            showToast("Pseudonyme non trouvé.", "error");
+            return;
+        }
+        const targetUserId = nicknameSnap.data().userId;
+
+        if (entry.isShared) {
+            const docRef = doc(db, `artifacts/${appId}/${COLLECTIONS.COLLABORATIVE_DOCS}`, entry.id);
+            await updateDoc(docRef, { members: arrayUnion(targetUserId) });
+            showToast("Utilisateur ajouté au partage !", "success");
+        } else {
+            const batch = writeBatch(db);
+            const originalDocRef = doc(db, `artifacts/${appId}/users/${userId}/${type}`, entry.id);
+            const newDocRef = doc(collection(db, `artifacts/${appId}/${COLLECTIONS.COLLABORATIVE_DOCS}`));
+
+            const newDocData = { ...entry, ownerId: userId, members: [userId, targetUserId], originalType: type };
+            delete newDocData.id;
+            delete newDocData.isShared;
+
+            batch.set(newDocRef, newDocData);
+            batch.delete(originalDocRef);
+
+            await batch.commit();
+            showToast("Document partagé avec succès !", "success");
             hideModal();
-        } catch (error) {
-            showToast("Erreur de mise à jour.", "error");
         }
     }
-    
-    async function shareEntry(collectionName, id) {
-        const publicDocPath = `artifacts/${appId}/public/data/${COLLECTIONS.SHARED_ENTRIES}`;
-        const userDocPath = `artifacts/${appId}/users/${userId}/${collectionName}/${id}`;
-        try {
-            const docSnap = await getDoc(doc(db, userDocPath));
-            if (docSnap.exists()) {
-                const dataToShare = {
-                    ...docSnap.data(),
-                    originalCollection: collectionName,
-                    originalUserId: userId,
-                    sharedAt: getTimeStamp()
-                };
-                await addDoc(collection(db, publicDocPath), dataToShare);
-                showToast("Élément partagé avec succès !", 'success');
+
+    async function handleUnsharing(entry) {
+        if (!entry || !entry.isShared || entry.ownerId !== userId) return;
+
+        const confirmed = await showConfirmationModal("Arrêter le partage rendra ce document à nouveau privé. Les autres collaborateurs perdront l'accès. Continuer ?");
+        if (confirmed) {
+            try {
+                const batch = writeBatch(db);
+
+                const sharedDocRef = doc(db, `artifacts/${appId}/${COLLECTIONS.COLLABORATIVE_DOCS}`, entry.id);
+                const privateDocData = { ...entry };
+                
+                delete privateDocData.members;
+                delete privateDocData.ownerId;
+                delete privateDocData.isShared;
+                delete privateDocData.id;
+                
+                const targetCollection = entry.originalType;
+                delete privateDocData.originalType;
+
+                const newPrivateDocRef = doc(collection(db, `artifacts/${appId}/users/${userId}/${targetCollection}`));
+
+                batch.set(newPrivateDocRef, privateDocData);
+                batch.delete(sharedDocRef);
+
+                await batch.commit();
+                showToast("Le partage a été arrêté.", "success");
+                hideModal();
+
+            } catch (error) {
+                console.error("Erreur lors de l'arrêt du partage:", error);
+                showToast("Erreur lors de l'arrêt du partage.", "error");
             }
-        } catch (error) {
-            showToast("Erreur lors du partage.", "error");
         }
     }
 
     // --- LOGIQUE SPÉCIFIQUE LISTE DE COURSES ---
-    function renderCourseItems(items, docId) {
+    function renderCourseItems(items, docId, isShared) {
         const container = document.getElementById('course-items-list');
         if (!container) return;
         container.innerHTML = (items || []).map((item, index) => `
@@ -828,47 +960,51 @@
         `).join('');
 
         if(docId) {
+            const collectionType = isShared ? COLLECTIONS.COLLABORATIVE_DOCS : COLLECTIONS.COURSES;
             container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.onchange = (e) => addOrUpdateCourseItem(docId, parseInt(e.target.dataset.itemIndex), e.target.checked);
+                cb.onchange = (e) => addOrUpdateCourseItem(docId, collectionType, parseInt(e.target.dataset.itemIndex), e.target.checked);
             });
             container.querySelectorAll('[data-action="delete-course-item"]').forEach(btn => {
-                btn.onclick = (e) => addOrUpdateCourseItem(docId, parseInt(e.currentTarget.dataset.itemIndex), null, true);
+                btn.onclick = (e) => addOrUpdateCourseItem(docId, collectionType, parseInt(e.currentTarget.dataset.itemIndex), null, true);
             });
         }
     }
 
-    async function addOrUpdateCourseItem(docId, indexToUpdate = null, isCompleted = null, toDelete = false) {
-        if (!docId) {
-            showToast("Veuillez d'abord enregistrer la nouvelle liste.", "info");
-            return;
-        }
+    async function addOrUpdateCourseItem(docId, collectionType, indexToUpdate = null, isCompleted = null, toDelete = false) {
+        if (!docId) return;
 
-        const docRef = doc(db, `artifacts/${appId}/users/${userId}/${COLLECTIONS.COURSES}`, docId);
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) return;
-
-        let currentItems = docSnap.data().items || [];
+        const path = collectionType === COLLECTIONS.COLLABORATIVE_DOCS ? `artifacts/${appId}/${collectionType}` : `artifacts/${appId}/users/${userId}/${collectionType}`;
+        const docRef = doc(db, path, docId);
         
-        if (toDelete && indexToUpdate !== null) {
-            currentItems.splice(indexToUpdate, 1);
-        } else if (indexToUpdate !== null) {
-            currentItems[indexToUpdate].completed = isCompleted;
-        } else {
-            const input = document.getElementById('new-course-item-input');
-            const newItemText = input.value.trim();
-            if (newItemText) {
-                currentItems.push({ text: newItemText, completed: false });
-                input.value = '';
-                input.focus();
+        try {
+            const docSnap = await getDoc(docRef);
+            if (!docSnap.exists()) return;
+
+            let currentItems = docSnap.data().items || [];
+            
+            if (toDelete && indexToUpdate !== null) {
+                currentItems.splice(indexToUpdate, 1);
+            } else if (indexToUpdate !== null) {
+                currentItems[indexToUpdate].completed = isCompleted;
             } else {
-                return;
+                const input = document.getElementById('new-course-item-input');
+                const newItemText = input.value.trim();
+                if (newItemText) {
+                    currentItems.push({ text: newItemText, completed: false });
+                    input.value = '';
+                    input.focus();
+                } else {
+                    return;
+                }
             }
+            
+            await updateDoc(docRef, { items: currentItems });
+            renderCourseItems(currentItems, docId, collectionType === COLLECTIONS.COLLABORATIVE_DOCS);
+        } catch (error) {
+            console.error("Erreur de mise à jour de la liste de courses:", error);
+            showToast("Erreur de mise à jour de la liste.", "error");
         }
-        
-        await updateDoc(docRef, { items: currentItems });
-        renderCourseItems(currentItems, docId);
     }
-
 
     // --- EVENT LISTENERS INITIAUX ---
     function initializeEventListeners() {
@@ -893,9 +1029,10 @@
         pageContent.addEventListener('click', e => {
             const card = e.target.closest('.card');
             if (card) {
-                const config = NAV_CONFIG[currentMode].find(p => p.id === currentPageId);
-                const entry = allDataCache[config.type]?.find(item => item.id === card.dataset.id);
-                if(entry) showItemModal(entry, config.type);
+                const isShared = card.dataset.type === COLLECTIONS.COLLABORATIVE_DOCS;
+                const collection = isShared ? allDataCache[COLLECTIONS.COLLABORATIVE_DOCS] : allDataCache[card.dataset.type];
+                const entry = collection?.find(item => item.id === card.dataset.id);
+                if(entry) showItemModal(entry, card.dataset.type);
             }
         });
     }
@@ -903,17 +1040,6 @@
     // --- Initialisation au chargement de la page ---
     document.addEventListener('DOMContentLoaded', initializeEventListeners);
 
-</script>
-  <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js').then(registration => {
-                console.log('ServiceWorker enregistré avec succès:', registration.scope);
-            }, err => {
-                console.log('Échec de l\'enregistrement du ServiceWorker:', err);
-            });
-        });
-    }
 </script>
 </body>
 </html>
