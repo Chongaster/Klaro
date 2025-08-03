@@ -1053,7 +1053,7 @@
                     const prompt = `Classe l'article de course suivant dans l'une de ces catégories : Fruits & Légumes, Viandes & Poissons, Boulangerie, Produits Laitiers & Œufs, Épicerie Salée, Épicerie Sucrée, Boissons, Surgelés, Hygiène & Beauté, Entretien & Nettoyage, Autre. Ne réponds que par le nom de la catégorie. Article : "${newItemText}"`;
                     chatHistory.push({ role: "user", parts: [{ text: prompt }] });
                     const payload = { contents: chatHistory };
-                    const apiKey = "";
+                    const apiKey = "AIzaSyDh6RVtap9cYJZpvQx8LPbePwc-njC3_zU";
                     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
                     
                     try {
