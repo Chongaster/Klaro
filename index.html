@@ -63,6 +63,9 @@
                         <span id="userNicknameDisplay" class="text-xs text-gray-500 font-bold"></span>
                     </div>
                     <button id="authBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Connexion</button>
+                    <button id="adminBtn" class="hidden p-2 rounded-full hover:bg-white/20 transition-colors" title="Administration">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    </button>
                     <button id="preferencesBtn" class="hidden p-2 rounded-full hover:bg-white/20 transition-colors" title="Préférences">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
@@ -127,7 +130,7 @@
     // Importe les modules Firebase nécessaires.
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInAnonymously, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch, where, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch, where, arrayUnion, runTransaction, collectionGroup, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     // --- CONFIGURATION & CONSTANTES ---
     const firebaseConfig = {
@@ -140,6 +143,7 @@
         measurementId: "G-15HMDGYYCN"
     };
     const appId = firebaseConfig.appId;
+    const ADMIN_EMAIL = "chongaster@gmail.com";
 
     const COLLECTIONS = {
         OBJECTIFS: 'objectifs',
@@ -429,6 +433,9 @@
             document.getElementById('signOutBtn').classList.remove('hidden');
             document.getElementById('modeSelector').classList.remove('hidden');
             document.getElementById('main-nav').classList.remove('hidden');
+            if (user.email === ADMIN_EMAIL) {
+                document.getElementById('adminBtn').classList.remove('hidden');
+            }
             
             hideModal();
             setupRealtimeListeners();
@@ -440,6 +447,7 @@
             userNicknameEl.textContent = '';
             document.getElementById('authBtn').classList.remove('hidden');
             document.getElementById('preferencesBtn').classList.add('hidden');
+            document.getElementById('adminBtn').classList.add('hidden');
             document.getElementById('signOutBtn').classList.add('hidden');
             document.getElementById('modeSelector').classList.add('hidden');
             document.getElementById('main-nav').classList.add('hidden');
@@ -465,7 +473,7 @@
                     </div>
                     <div class="flex flex-col gap-3 pt-2">
                         <button id="signInEmailBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Se connecter</button>
-                        <button id="signUpEmailBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">S'inscrire</button>
+                        <button id="signUpEmailBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">Créer un compte</button>
                     </div>
                     <div class="relative flex py-4 items-center">
                         <div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div><span class="flex-shrink mx-4 text-gray-400 dark:text-gray-500">OU</span><div class="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
@@ -1053,7 +1061,7 @@
                     const prompt = `Classe l'article de course suivant dans l'une de ces catégories : Fruits & Légumes, Viandes & Poissons, Boulangerie, Produits Laitiers & Œufs, Épicerie Salée, Épicerie Sucrée, Boissons, Surgelés, Hygiène & Beauté, Entretien & Nettoyage, Autre. Ne réponds que par le nom de la catégorie. Article : "${newItemText}"`;
                     chatHistory.push({ role: "user", parts: [{ text: prompt }] });
                     const payload = { contents: chatHistory };
-                    const apiKey = "AIzaSyDh6RVtap9cYJZpvQx8LPbePwc-njC3_zU";
+                    const apiKey = "";
                     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
                     
                     try {
@@ -1105,11 +1113,77 @@
         }
     }
 
+    // --- LOGIQUE D'ADMINISTRATION ---
+    async function showAdminPanel() {
+        const q = collectionGroup(db, COLLECTIONS.USER_PREFERENCES);
+        const querySnapshot = await getDocs(q);
+        let users = [];
+        querySnapshot.forEach((doc) => {
+            const pathParts = doc.ref.path.split('/');
+            const uid = pathParts[pathParts.length - 3];
+            users.push({ uid: uid, ...doc.data() });
+        });
+
+        const userListHtml = users.map(user => `
+            <div class="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <div>
+                    <p class="font-bold">${user.nickname || 'Pas de pseudo'}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 font-mono">${user.uid}</p>
+                </div>
+                <button data-uid="${user.uid}" data-nickname="${user.nickname || ''}" class="admin-delete-user-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm">Supprimer</button>
+            </div>
+        `).join('');
+
+        const content = `
+            <div class="flex-shrink-0 p-4 border-b dark:border-gray-700 flex justify-between items-center">
+                <h3 class="text-xl font-bold">Panneau d'Administration</h3>
+                <button class="modal-close-btn text-3xl font-bold text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div class="p-6 space-y-4 overflow-y-auto">
+                <h4 class="text-lg font-semibold">Liste des Utilisateurs (${users.length})</h4>
+                <div class="space-y-2">${userListHtml}</div>
+            </div>
+        `;
+        showModal(content, 'max-w-2xl');
+
+        document.querySelectorAll('.admin-delete-user-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const uidToDelete = e.currentTarget.dataset.uid;
+                const nicknameToDelete = e.currentTarget.dataset.nickname;
+                handleAdminDeleteUser(uidToDelete, nicknameToDelete);
+            });
+        });
+    }
+
+    async function handleAdminDeleteUser(uidToDelete, nicknameToDelete) {
+        const confirmed = await showConfirmationModal(`Êtes-vous sûr de vouloir supprimer l'utilisateur ${nicknameToDelete} (${uidToDelete}) ? Cette action est irréversible et supprimera ses préférences et son pseudo.`);
+        if (confirmed) {
+            try {
+                const batch = writeBatch(db);
+                const prefRef = doc(db, `artifacts/${appId}/users/${uidToDelete}/${COLLECTIONS.USER_PREFERENCES}`, 'settings');
+                batch.delete(prefRef);
+
+                if (nicknameToDelete) {
+                    const nicknameRef = doc(db, `artifacts/${appId}/${COLLECTIONS.NICKNAMES}`, nicknameToDelete);
+                    batch.delete(nicknameRef);
+                }
+                
+                await batch.commit();
+                showToast("Utilisateur supprimé avec succès.", "success");
+                showAdminPanel(); // Refresh panel
+            } catch (error) {
+                console.error("Erreur de suppression admin:", error);
+                showToast("Erreur lors de la suppression.", "error");
+            }
+        }
+    }
+
     // --- EVENT LISTENERS INITIAUX ---
     function initializeEventListeners() {
         document.getElementById('authBtn').addEventListener('click', showAuthModal);
         document.getElementById('signOutBtn').addEventListener('click', () => signOut(auth).then(() => showToast('Déconnecté.', 'info')));
         document.getElementById('preferencesBtn').addEventListener('click', showPreferencesModal);
+        document.getElementById('adminBtn').addEventListener('click', showAdminPanel);
         
         modalOverlay.addEventListener('click', (e) => {
             if (e.target === modalOverlay) hideModal();
