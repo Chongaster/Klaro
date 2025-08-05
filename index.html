@@ -133,6 +133,8 @@
     import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch, where, arrayUnion, runTransaction, collectionGroup, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
     import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+    // [NOUVEAU] Importation pour App Check
+    import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check.js";
 
     // --- CONFIGURATION & CONSTANTES ---
     const firebaseConfig = {
@@ -194,6 +196,15 @@
     let app, db, auth, functions, storage;
     try {
         app = initializeApp(firebaseConfig);
+
+        // [NOUVEAU] Initialisation de Firebase App Check
+        // Remplacez 'YOUR_RECAPTCHA_V3_SITE_KEY' par votre propre clé de site reCAPTCHA v3.
+        // Suivez les étapes dans la conversation pour obtenir cette clé.
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider('YOUR_RECAPTCHA_V3_SITE_KEY'),
+            isTokenAutoRefreshEnabled: true // Recommandé
+        });
+
         db = getFirestore(app);
         auth = getAuth(app);
         functions = getFunctions(app);
