@@ -131,6 +131,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInAnonymously, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc, writeBatch, where, arrayUnion, runTransaction, collectionGroup, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+    import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
     // --- CONFIGURATION & CONSTANTES ---
     const firebaseConfig = {
@@ -153,6 +155,7 @@
         VOYAGES: 'voyages',
         NOTES_PERSO: 'notes_perso',
         COURSES: 'courses',
+        WALLET: 'wallet',
         USER_PREFERENCES: 'user_preferences',
         COLLABORATIVE_DOCS: 'collaborative_docs',
         NICKNAMES: 'nicknames'
@@ -182,16 +185,19 @@
             { id: 'voyages', title: 'Voyages', icon: '✈️', type: COLLECTIONS.VOYAGES, description: 'Planifiez vos prochaines escapades.' },
             { id: 'notes_perso', title: 'Notes', icon: '🗒️', type: COLLECTIONS.NOTES_PERSO, description: 'Vos pensées et mémos personnels.' },
             { id: 'courses', title: 'Courses', icon: '🛒', type: COLLECTIONS.COURSES, description: 'N\'oubliez plus rien au supermarché.' },
+            { id: 'wallet', title: 'Portefeuille', icon: '🎟️', type: COLLECTIONS.WALLET, description: 'Conservez vos billets et documents importants.' },
             { id: 'sharedWithMePerso', title: 'Partagés', icon: '🤝', type: COLLECTIONS.COLLABORATIVE_DOCS, description: 'Documents partagés avec vous.' }
         ]
     };
 
     // --- INITIALISATION FIREBASE ---
-    let app, db, auth;
+    let app, db, auth, functions, storage;
     try {
         app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
+        functions = getFunctions(app);
+        storage = getStorage(app);
     } catch (e) {
         console.error("Erreur d'initialisation de Firebase:", e);
         document.body.innerHTML = `<div class="p-8 text-center text-red-500">Erreur critique de configuration Firebase. L'application ne peut pas démarrer.</div>`;
@@ -637,8 +643,25 @@
         card.dataset.type = entry.isShared ? COLLECTIONS.COLLABORATIVE_DOCS : pageConfig.type;
         card.dataset.originalType = entry.originalType || pageConfig.type;
 
-        card.onclick = () => showItemModal(entry, card.dataset.type);
-
+        // Wallet items should open in a new tab, others open the modal
+        if (card.dataset.originalType === COLLECTIONS.WALLET) {
+             card.onclick = (e) => {
+                e.stopPropagation(); // prevent modal from opening
+                window.open(entry.fileUrl, '_blank');
+            };
+            // Add a separate button/icon for editing/deleting wallet items
+            const editBtn = document.createElement('button');
+            editBtn.innerHTML = '⚙️';
+            editBtn.className = 'absolute bottom-4 right-4 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700';
+            editBtn.onclick = (e) => {
+                e.stopPropagation();
+                showItemModal(entry, card.dataset.type);
+            };
+            card.querySelector('.card-footer').appendChild(editBtn);
+        } else {
+            card.onclick = () => showItemModal(entry, card.dataset.type);
+        }
+        
         card.querySelector('.card-title').textContent = entry.titre || 'Sans titre';
         
         const iconConfig = Object.values(NAV_CONFIG).flat().find(c => c.type === card.dataset.originalType);
@@ -649,6 +672,8 @@
              const items = entry.items || [];
              const completedItems = items.filter(item => item.completed).length;
              summaryEl.textContent = `${completedItems} / ${items.length} articles cochés`;
+        } else if (card.dataset.originalType === COLLECTIONS.WALLET) {
+            summaryEl.textContent = entry.fileName || 'Fichier';
         } else if (entry.contenu) {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = entry.contenu;
@@ -680,11 +705,33 @@
         const originalType = data.originalType || type;
 
         let formHtml = '';
-        formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Titre</label><input type="text" data-field="titre" value="${data.titre}" placeholder="Titre de l'élément" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
+        formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Titre</label><input type="text" data-field="titre" value="${data.titre || ''}" placeholder="Titre de l'élément" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
         
         if (originalType === COLLECTIONS.COURSES) {
             formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Articles</label><div id="course-items-list" class="mt-2 space-y-2"></div></div>`;
             formHtml += `<div class="flex gap-2"><input type="text" id="new-course-item-input" placeholder="Nouvel article" class="flex-grow p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"><button type="button" id="add-course-item-btn" class="bg-blue-500 text-white px-4 rounded-lg">Ajouter</button></div>`;
+        } else if (originalType === COLLECTIONS.WALLET) {
+            // Pour la modification, on affiche le nom du fichier. Pour la création, on montre l'input.
+            if (isNew) {
+                 formHtml += `
+                    <div class="mb-4">
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Fichier (PDF, JPG, PNG)</label>
+                        <input type="file" id="file-input" accept="image/jpeg,image/png,application/pdf" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                    </div>
+                    <div id="upload-progress" class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 hidden mb-4">
+                        <div id="upload-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                `;
+            } else {
+                 formHtml += `
+                    <div class="mb-4">
+                         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Fichier Actuel</label>
+                         <div class="p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700">
+                            <a href="${data.fileUrl}" target="_blank" class="text-blue-500 hover:underline">${data.fileName}</a>
+                         </div>
+                    </div>
+                 `;
+            }
         } else { 
             formHtml += `
                 <div class="mb-4 flex-grow flex flex-col">
@@ -698,7 +745,7 @@
                 </div>`;
         }
 
-        if (originalType !== COLLECTIONS.COURSES) {
+        if (originalType !== COLLECTIONS.COURSES && originalType !== COLLECTIONS.WALLET) {
             formHtml += `<div class="mb-4"><label class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags (séparés par des virgules)</label><input type="text" data-field="tags" value="${(data.tags || []).join(', ')}" class="w-full p-3 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"></div>`;
         }
 
@@ -774,10 +821,13 @@
         const originalType = entry?.originalType || type;
 
         if (isNew) {
-            document.getElementById('save-btn').onclick = () => saveEntry(null, type);
+            const saveBtn = document.getElementById('save-btn');
+            if (saveBtn) {
+                saveBtn.onclick = () => saveEntry(null, type, saveBtn);
+            }
         } else {
             const deleteBtn = modalContainer.querySelector('[data-action="delete"]');
-            if(deleteBtn) deleteBtn.onclick = () => deleteEntry(type, entry.id, entry.isShared);
+            if(deleteBtn) deleteBtn.onclick = () => deleteEntry(type, entry.id, entry.isShared, entry.filePath);
             
             const shareBtn = modalContainer.querySelector('#share-btn');
             if(shareBtn) shareBtn.onclick = () => handleSharing(entry, type);
@@ -829,13 +879,19 @@
     }
 
     // --- CRUD OPERATIONS ---
-    async function saveEntry(id, collectionName) {
+    async function saveEntry(id, collectionName, saveBtn = null) {
         const isNew = !id;
         const form = document.getElementById('modal-form-content');
         const titreInput = form.querySelector('[data-field="titre"]');
 
         if (!titreInput || !titreInput.value.trim()) {
             showToast("Le titre est obligatoire.", "error");
+            return;
+        }
+
+        // Cas spécial pour le portefeuille (upload de fichier)
+        if (collectionName === COLLECTIONS.WALLET) {
+            handleFileUpload(titreInput.value.trim(), saveBtn);
             return;
         }
 
@@ -870,6 +926,95 @@
         }
     }
 
+    // --- [NOUVEAU] Fonction pour traduire les erreurs de Storage ---
+    function getFirebaseStorageError(errorCode) {
+        switch (errorCode) {
+            case 'storage/unauthorized':
+                return "Vous n'avez pas la permission. Vérifiez les règles de sécurité de Storage et la configuration CORS.";
+            case 'storage/canceled':
+                return "L'envoi a été annulé.";
+            case 'storage/unknown':
+                return "Une erreur inconnue est survenue. Vérifiez la console et la configuration CORS.";
+            case 'storage/object-not-found':
+                return "Le fichier n'a pas été trouvé.";
+            case 'storage/bucket-not-found':
+                return "L'espace de stockage (bucket) est introuvable.";
+            case 'storage/project-not-found':
+                return "Le projet Firebase est introuvable.";
+            case 'storage/quota-exceeded':
+                return "Le quota de stockage a été dépassé.";
+            case 'storage/unauthenticated':
+                return "Vous devez être connecté pour effectuer cette action.";
+            default:
+                return `Erreur non identifiée (${errorCode}).`;
+        }
+    }
+
+    function handleFileUpload(titre, saveBtn) {
+        if (!userId) {
+            showToast("Erreur: Utilisateur non connecté.", "error");
+            return;
+        }
+        if (!saveBtn) return;
+
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            showToast("Veuillez sélectionner un fichier.", "error");
+            return;
+        }
+
+        const progressContainer = document.getElementById('upload-progress');
+        const progressBar = document.getElementById('upload-progress-bar');
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Envoi en cours...';
+        progressContainer.classList.remove('hidden');
+
+        const filePath = `artifacts/${appId}/users/${userId}/wallet/${Date.now()}_${file.name}`;
+        const storageRef = ref(storage, filePath);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        uploadTask.on('state_changed',
+            (snapshot) => {
+                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                progressBar.style.width = progress + '%';
+            },
+            (error) => {
+                // [AMÉLIORÉ] Log et affichage de l'erreur détaillée
+                console.error("Erreur d'upload détaillée:", error);
+                showToast(getFirebaseStorageError(error.code), "error");
+                
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 Enregistrer';
+                progressContainer.classList.add('hidden');
+            },
+            () => {
+                getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+                    const walletCollection = collection(db, `artifacts/${appId}/users/${userId}/${COLLECTIONS.WALLET}`);
+                    await addDoc(walletCollection, {
+                        titre: titre,
+                        fileName: file.name,
+                        fileUrl: downloadURL,
+                        filePath: filePath,
+                        ownerId: userId,
+                        createdAt: new Date()
+                    });
+                    showToast("Fichier envoyé et enregistré !", "success");
+                    hideModal();
+                }).catch(error => {
+                    console.error("Erreur lors de la création de l'entrée Firestore:", error);
+                    showToast("Erreur lors de la sauvegarde des informations.", "error");
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '💾 Enregistrer';
+                    progressContainer.classList.add('hidden');
+                });
+            }
+        );
+    }
+
+
     async function handleUpdate(collectionName, id, field, value) {
         if (!userId) return;
         const isShared = collectionName === COLLECTIONS.COLLABORATIVE_DOCS;
@@ -886,19 +1031,32 @@
         }
     }
     
-    async function deleteEntry(collectionName, id, isShared) {
+    async function deleteEntry(collectionName, id, isShared, filePath) {
         const confirmed = await showConfirmationModal("Supprimer cet élément définitivement ?");
         if (confirmed) {
-            const path = isShared ? `artifacts/${appId}/${collectionName}` : `artifacts/${appId}/users/${userId}/${collectionName}`;
+            const basePath = isShared ? `artifacts/${appId}/${COLLECTIONS.COLLABORATIVE_DOCS}` : `artifacts/${appId}/users/${userId}/${collectionName}`;
+            const docRef = doc(db, basePath, id);
+
             try {
-                await deleteDoc(doc(db, path, id));
+                if (filePath) {
+                    try {
+                        const fileRef = ref(storage, filePath);
+                        await deleteObject(fileRef);
+                    } catch (storageError) {
+                        console.warn("Le fichier à supprimer du stockage n'a pas été trouvé, il a peut-être déjà été supprimé:", storageError);
+                    }
+                }
+                
+                await deleteDoc(docRef);
                 showToast("Élément supprimé.", 'success');
                 hideModal();
             } catch (error) {
+                console.error("Erreur de suppression:", error);
                 showToast("Erreur de suppression.", "error");
             }
         }
     }
+
 
     async function markAsCompleted(collectionName, id, isCompleted) {
         if (!userId) return;
@@ -1082,13 +1240,13 @@
                         if (result.candidates && result.candidates.length > 0 &&
                             result.candidates[0].content && result.candidates[0].content.parts &&
                             result.candidates[0].content.parts.length > 0) {
-                          
-                          const category = result.candidates[0].content.parts[0].text.trim();
-                          currentItems.push({ text: newItemText, completed: false, category: category });
+                        
+                         const category = result.candidates[0].content.parts[0].text.trim();
+                         currentItems.push({ text: newItemText, completed: false, category: category });
 
                         } else {
-                          console.warn("Réponse de l'API Gemini reçue, mais sans contenu valide. Réponse complète:", result);
-                          currentItems.push({ text: newItemText, completed: false, category: 'Autre' });
+                         console.warn("Réponse de l'API Gemini reçue, mais sans contenu valide. Réponse complète:", result);
+                         currentItems.push({ text: newItemText, completed: false, category: 'Autre' });
                         }
 
                     } catch (e) {
@@ -1156,24 +1314,16 @@
     }
 
     async function handleAdminDeleteUser(uidToDelete, nicknameToDelete) {
-        const confirmed = await showConfirmationModal(`Êtes-vous sûr de vouloir supprimer l'utilisateur ${nicknameToDelete} (${uidToDelete}) ? Cette action est irréversible et supprimera ses préférences et son pseudo.`);
+        const confirmed = await showConfirmationModal(`Êtes-vous sûr de vouloir supprimer l'utilisateur ${nicknameToDelete} (${uidToDelete}) ? Cette action est irréversible et supprimera son compte et toutes ses données.`);
         if (confirmed) {
             try {
-                const batch = writeBatch(db);
-                const prefRef = doc(db, `artifacts/${appId}/users/${uidToDelete}/${COLLECTIONS.USER_PREFERENCES}`, 'settings');
-                batch.delete(prefRef);
-
-                if (nicknameToDelete) {
-                    const nicknameRef = doc(db, `artifacts/${appId}/${COLLECTIONS.NICKNAMES}`, nicknameToDelete);
-                    batch.delete(nicknameRef);
-                }
-                
-                await batch.commit();
+                const deleteUser = httpsCallable(functions, 'deleteUserAccount');
+                await deleteUser({ uidToDelete: uidToDelete, nicknameToDelete: nicknameToDelete, appId: appId });
                 showToast("Utilisateur supprimé avec succès.", "success");
                 showAdminPanel(); // Refresh panel
             } catch (error) {
                 console.error("Erreur de suppression admin:", error);
-                showToast("Erreur lors de la suppression.", "error");
+                showToast(error.message || "Erreur lors de la suppression.", "error");
             }
         }
     }
@@ -1201,11 +1351,9 @@
         });
         pageContent.addEventListener('click', e => {
             const card = e.target.closest('.card');
-            if (card) {
-                const isShared = card.dataset.type === COLLECTIONS.COLLABORATIVE_DOCS;
-                const collection = isShared ? allDataCache[COLLECTIONS.COLLABORATIVE_DOCS] : allDataCache[card.dataset.type];
-                const entry = collection?.find(item => item.id === card.dataset.id);
-                if(entry) showItemModal(entry, card.dataset.type);
+            if (card && card.onclick) { // Check if onclick is defined before proceeding
+                // The card's own onclick handler will be triggered.
+                // No need to find the entry again here.
             }
         });
     }
